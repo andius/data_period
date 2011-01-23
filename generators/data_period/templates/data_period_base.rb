@@ -1,4 +1,4 @@
-class DataPeriod::Basic < DataPeriod::Base
+class DataPeriod::Base < DataPeriod::Abstract
   
   #  You can use one of these examples: 
   #
@@ -31,7 +31,7 @@ class DataPeriod::Basic < DataPeriod::Base
   #              :date  => d )
   #    end
   
-  def init_periods
+  def configure_periods
 
     period "future"
 

@@ -1,9 +1,8 @@
 module DataPeriod
   class Renderer
-    attr_reader :helpers
+    attr_reader :helpers, :data_period
     delegate :content_tag, :link_to, :javascript_tag, :to => :helpers
-    
-    include ApplicationHelper::Text
+    delegate :period_variable_name, :current_period, :to => :data_period 
     
     def initialize(helpers, data_period, defaults)
       @helpers = helpers
@@ -34,7 +33,7 @@ module DataPeriod
     end
     
     def to_str
-      wrapper(@periods.map { |p| viewer(show_period(p), p) }.join(separator))
+      wrapper(@periods.map { |p| viewer(show_period(p), p) }.join(separator).html_safe)
     end
     
     def show_period(p)
@@ -44,8 +43,11 @@ module DataPeriod
       output_title = options[:title].call(p.title) if options[:title].present?
       output_title ||= title_view(p.title)
       
-      output_date = options[:date].call(p.date) if options[:date].present?
-      output_date ||= (date_view(p.date) if p.date) || ""
+      if options[:date].present? && !(p.select? && !p.current_period?)
+        date_args = p.date || [p.from, p.to]
+        output_date = options[:date].call(*date_args)
+      end
+      output_date ||= date_view(p)
       
       p.title_view = output_title
       p.date_view = output_date
@@ -53,6 +55,7 @@ module DataPeriod
       output_view = options[:current].call(p) if p.current_period? && options[:current].present?
       output_view ||= options[:view].call(p) if options[:view].present?
       output_view ||= view(p)
+      output_view.html_safe
     end
     
     def default_view(period_output, p)
@@ -74,15 +77,21 @@ module DataPeriod
     # You can override lower standing methods in your own renderer class
 
     def view(p)
-      p.period? || p.select? || p.today? ? p.title_view : p.date_view
+      p.period? || p.today? || (p.select? && !p.current_period?) ? p.title_view : p.date_view
     end
     
     def title_view(title)
       title
     end
     
-    def date_view(date)
-      date.strftime("%d.%m")
+    def date_view(p)
+      if p.date && !p.select?
+        p.date.strftime("%d.%m")
+      elsif p.period? || p.select? && p.current_period?
+        p.from.strftime("%d.%m") + "&ndash;" + p.to.strftime("%d.%m")
+      else
+        ""
+      end
     end
     
     def global_wrapper(output)
@@ -90,12 +99,11 @@ module DataPeriod
     end
     
     def viewer_for_select(period_output, p)
-      link_to(period_output, "", :onclick => "return select(this);") +
-      javascript_tag { "function select(element) { alert(element); }" }
+      link_to(period_output, "", :onclick => "selectPeriod(); return false;", :class => "data-period-select", :id => "data_period_select")
     end
     
     def viewer_for_current(period_output, p)
-      content_tag(:span, period_output, :class => "data-period-current")
+      content_tag(:span, period_output)
     end
     
     def viewer_for_standard(period_output, p)
@@ -107,7 +115,10 @@ module DataPeriod
     end
     
     def url_options(p)
-      p.first_period? ? {} : { :period => p.name }
+      data_period_options = p.default_period? ? {} : { period_variable_name => p.name }
+      params = @controller_params.dup
+      params.reject! {|k, v| [period_variable_name, :from, :to, :page].include?(k.to_sym) }
+      data_period_options.merge(params)
     end
     
   end
